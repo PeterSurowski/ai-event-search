@@ -96,17 +96,21 @@ bun test
 1. Database Improvements: Add pool settings, timeouts, retry logic to avoid crashes under high demand (especially important in hospitals and universities where you might have a large number of users),
 2. Input Validation: Add length limits and PII detection before OpenAI API calls,
 3. Remove Environment Variable Fallback: - Remove `process.env.PEI_AUTH_TOKEN` fallback; If the individual team doesn't have their own token, the request should simply fail. It's way too easy for the token to accidentally get leaken to Github/Gitlab/Bitbucket/etc. like this.
-4. **Health Check Endpoints** - Add `/health` and `/ready` for load balancers
-5. **Graceful Shutdown** - Handle SIGTERM/SIGINT properly
-
-### Medium Priority
-6. **Rate Limiting** - Protect against brute force and DoS
-7. **Structured Logging** - Replace console.* with proper logger (pino/winston)
-8. **Magic String Constants** - Convert to enums/constants
-9. **Configuration Validation** - Validate environment on startup
-
+4. Rate Limiting: Protect against brute force and DDoS attacks
+7. Error logs: All errors currently just logging to the console, fine for dev, not for prod. Consider a Node logging library like Pino or Winston
 ---
 
+## Task 2
+I handled this in four major stops
+1. Firs t I defined the input scheme and types in the `index.ts` file
+2. Then I created the service function in the `services` directory to fetch and summarize events
+3. Then I registered the MCP tool in `server.ts`
+4. Last, I added tests for the new tool
+
+### Notes on Considerations
+- The call location is src/services/summarization.ts (I decided to use the real API instead of a mock.)
+- For services with many events, I limited the context window to only the most recent events and prioritized them by severity with the most critical first.
+- I structured the error handling exactly like the existing tools. I also used the same authorization pattern.
 
 
 
