@@ -88,7 +88,7 @@ export function auditAuthorizationDenied(
   callerId: string,
   callerName: string | undefined,
   serviceId: string,
-  action: string,
+  _action: string,
   metadata?: Record<string, unknown>
 ): void {
   auditLog({
