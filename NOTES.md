@@ -121,7 +121,8 @@ I handled this in four major stops
 
 
 
-
+## Notes on AI tools
+Two years ago, I was an AI detractor. I found it clunky and not terribly useful and I doubted that it would ever be very useful. I've never been so happy to be so wrong. About a year ago, it probably sped my workflow up 20 percent. Today, it probably speeds my workflow up 200-300 percent. Thanks to AI tools now being integrated into my IDE, such as the one I use (Github Copilot) I rarely actually type any of the code myself. In fact, AI has advanced so quickly in just the past 4–6 months, I've found my role has changed to becoming almost a coach to the AI. The AI makes the changes, I review them, make changes, and tell the AI why I made the changes for training purposes. Occassionally, my Copilot tool is completely off-base (though those occassions are growing more and more infrequent) so I use a variety of tools. My secondary tool is a chat application I built and host on the server in my home lab that runs on an uncensored Claude Sonnet model. I use it when I want a second opinion. 
 
 
 
