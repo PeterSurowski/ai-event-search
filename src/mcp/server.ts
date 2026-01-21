@@ -1,10 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { searchEvents, getEventById, getServiceTimeline } from '../services/events.js';
+import { generateImpactSummary } from '../services/impact-summary.js';
 import {
   SearchEventsInputSchema,
   GetEventDetailsInputSchema,
   GetServiceTimelineInputSchema,
+  GetImpactSummaryInputSchema,
 } from '../types/index.js';
 import { resolveCallerContext } from './auth.js';
 
@@ -134,6 +136,52 @@ server.tool(
         },
       ],
     };
+  }
+);
+
+/**
+ * Tool: get_impact_summary
+ * Generate a natural language summary of significant events for a service
+ */
+server.tool(
+  'get_impact_summary',
+  'Generate an executive summary of significant events and operational impact for a service. Returns a natural language analysis of incidents, deployments, and service health. Only accessible for authorized services.',
+  GetImpactSummaryInputSchema.shape,
+  async (params, extra) => {
+    const input = GetImpactSummaryInputSchema.parse(params);
+    const context = await resolveCallerContext(extra);
+    
+    try {
+      const summary = await generateImpactSummary(input, context);
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              service: input.serviceId,
+              timeRange: {
+                start: input.startDate || 'beginning',
+                end: input.endDate || 'now',
+              },
+              summary,
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              error: 'Failed to generate impact summary',
+              message: error instanceof Error ? error.message : 'Unknown error',
+            }),
+          },
+        ],
+      };
+    }
   }
 );
 
