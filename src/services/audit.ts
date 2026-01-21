@@ -45,7 +45,7 @@ export function auditLog(entry: Omit<AuditLogEntry, 'timestamp'>): void {
 export function auditEventAccess(
   callerId: string,
   callerName: string | undefined,
-  action: 'search' | 'get_details' | 'get_timeline',
+  action: 'search' | 'get_details' | 'get_timeline' | 'get_impact_summary',
   resultCount: number,
   serviceId?: string,
   metadata?: Record<string, unknown>
