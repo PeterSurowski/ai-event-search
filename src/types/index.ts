@@ -69,3 +69,12 @@ export const GetServiceTimelineInputSchema = z.object({
 });
 
 export type GetServiceTimelineInput = z.infer<typeof GetServiceTimelineInputSchema>;
+
+export const GetImpactSummaryInputSchema = z.object({
+  serviceId: z.string().describe('The service to summarize events for'),
+  startDate: z.string().optional().describe('ISO date string for range start'),
+  endDate: z.string().optional().describe('ISO date string for range end'),
+  maxEvents: z.number().min(5).max(50).default(20).describe('Maximum events to include in summary'),
+});
+
+export type GetImpactSummaryInput = z.infer<typeof GetImpactSummaryInputSchema>;
