@@ -3,6 +3,18 @@ import { events } from '../db/schema.js';
 import { eq, and, gte, lte, inArray, desc, sql, or, ilike } from 'drizzle-orm';
 import { McpCallerContext, SearchEventsInput, getAuthorizedServiceFilter } from '../types/index.js';
 import { generateEmbedding } from './embeddings.js';
+import { auditEventAccess } from './audit.js';
+
+/**
+ * Escape special characters in LIKE patterns to prevent SQL injection
+ * Escapes: %, _, \
+ */
+function escapeLikePattern(pattern: string): string {
+  return pattern
+    .replace(/\\/g, '\\\\')
+    .replace(/%/g, '\\%')
+    .replace(/_/g, '\\_');
+}
 
 export interface SearchResult {
   id: string;
@@ -49,9 +61,11 @@ async function keywordSearch(
   }
   
   // Keyword matching on title and description
+  // Escape special characters to prevent SQL injection
+  const escapedQuery = escapeLikePattern(input.query);
   const keywordCondition = or(
-    ilike(events.title, `%${input.query}%`),
-    ilike(events.description, `%${input.query}%`)
+    ilike(events.title, `%${escapedQuery}%`),
+    ilike(events.description, `%${escapedQuery}%`)
   );
   conditions.push(keywordCondition);
   
@@ -79,7 +93,7 @@ async function keywordSearch(
  */
 async function semanticSearch(
   input: SearchEventsInput,
-  _context: McpCallerContext
+  context: McpCallerContext
 ): Promise<SearchResult[]> {
   // Generate embedding for the search query
   const queryEmbedding = await generateEmbedding(input.query);
@@ -89,6 +103,12 @@ async function semanticSearch(
   const similarityQuery = sql`1 - (${events.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector)`;
   
   const conditions = [];
+  
+  // CRITICAL: Authorization filter - must match keywordSearch implementation
+  const authorizedFilter = getAuthorizedServiceFilter(context);
+  if (authorizedFilter !== '*') {
+    conditions.push(inArray(events.serviceId, authorizedFilter));
+  }
   
   // Apply optional filters
   if (input.serviceId) {
@@ -141,10 +161,30 @@ export async function searchEvents(
   input: SearchEventsInput,
   context: McpCallerContext
 ): Promise<SearchResult[]> {
-  if (input.useSemanticSearch) {
-    return semanticSearch(input, context);
-  }
-  return keywordSearch(input, context);
+  const results = input.useSemanticSearch
+    ? await semanticSearch(input, context)
+    : await keywordSearch(input, context);
+  
+  // Audit log the search
+  auditEventAccess(
+    context.callerId,
+    context.callerName,
+    'search',
+    results.length,
+    input.serviceId,
+    {
+      query: input.query,
+      searchType: input.useSemanticSearch ? 'semantic' : 'keyword',
+      filters: {
+        eventType: input.eventType,
+        severity: input.severity,
+        startDate: input.startDate,
+        endDate: input.endDate,
+      },
+    }
+  );
+  
+  return results;
 }
 
 /**
@@ -170,6 +210,11 @@ export async function getEventById(
     .limit(1);
   
   if (result.length === 0) {
+    // Audit the failed access attempt
+    auditEventAccess(context.callerId, context.callerName, 'get_details', 0, undefined, {
+      eventId,
+      reason: 'not_found',
+    });
     return null;
   }
   
@@ -180,8 +225,19 @@ export async function getEventById(
   if (authorizedFilter !== '*' && !authorizedFilter.includes(event.serviceId)) {
     // Return null as if the event doesn't exist
     // Don't leak that an event exists but is unauthorized
+    auditEventAccess(context.callerId, context.callerName, 'get_details', 0, event.serviceId, {
+      eventId,
+      reason: 'unauthorized',
+    });
     return null;
   }
+  
+  // Audit successful access
+  auditEventAccess(context.callerId, context.callerName, 'get_details', 1, event.serviceId, {
+    eventId,
+    eventType: event.eventType,
+    severity: event.severity,
+  });
   
   return event;
 }
@@ -200,6 +256,10 @@ export async function getServiceTimeline(
   // Authorization check first
   const authorizedFilter = getAuthorizedServiceFilter(context);
   if (authorizedFilter !== '*' && !authorizedFilter.includes(serviceId)) {
+    // Audit the denied access
+    auditEventAccess(context.callerId, context.callerName, 'get_timeline', 0, serviceId, {
+      reason: 'unauthorized',
+    });
     return [];
   }
   
@@ -226,6 +286,13 @@ export async function getServiceTimeline(
     .where(and(...conditions))
     .orderBy(desc(events.occurredAt))
     .limit(limit);
+  
+  // Audit successful timeline access
+  auditEventAccess(context.callerId, context.callerName, 'get_timeline', results.length, serviceId, {
+    startDate: startDate?.toISOString(),
+    endDate: endDate?.toISOString(),
+    limit,
+  });
   
   return results;
 }

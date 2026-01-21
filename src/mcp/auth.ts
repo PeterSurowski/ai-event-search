@@ -3,6 +3,7 @@ import { apiTokens } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { McpCallerContext } from '../types/index.js';
 import { createHash } from 'crypto';
+import { auditAuthFailure, auditAuthSuccess } from '../services/audit.js';
 
 /**
  * Resolve the caller context from MCP request metadata
@@ -20,7 +21,7 @@ export async function resolveCallerContext(extra: unknown): Promise<McpCallerCon
   if (!authToken) {
     // No authentication - return a context with no access
     // In production, you might want to throw an error instead
-    console.warn('No authentication token provided');
+    auditAuthFailure('anonymous', 'missing_token');
     return {
       callerId: 'anonymous',
       authorizedServices: [],
@@ -37,7 +38,7 @@ export async function resolveCallerContext(extra: unknown): Promise<McpCallerCon
     .limit(1);
   
   if (token.length === 0) {
-    console.warn('Invalid authentication token');
+    auditAuthFailure('unknown', 'invalid_token', { tokenHash });
     return {
       callerId: 'invalid',
       authorizedServices: [],
@@ -49,7 +50,10 @@ export async function resolveCallerContext(extra: unknown): Promise<McpCallerCon
   
   // Check expiration
   if (tokenRecord.expiresAt && tokenRecord.expiresAt < new Date()) {
-    console.warn('Authentication token has expired');
+    auditAuthFailure(tokenRecord.id, 'expired_token', {
+      name: tokenRecord.name,
+      expiresAt: tokenRecord.expiresAt.toISOString(),
+    });
     return {
       callerId: tokenRecord.id,
       authorizedServices: [],
@@ -61,7 +65,15 @@ export async function resolveCallerContext(extra: unknown): Promise<McpCallerCon
   db.update(apiTokens)
     .set({ lastUsedAt: new Date() })
     .where(eq(apiTokens.id, tokenRecord.id))
-    .catch(() => {}); // Ignore errors
+    .catch((err) => {
+      // Log but don't fail auth if timestamp update fails
+      console.error('Failed to update lastUsedAt for token:', tokenRecord.id, err);
+    });
+  
+  // Audit successful authentication
+  auditAuthSuccess(tokenRecord.id, tokenRecord.name, {
+    authorizedServices: tokenRecord.authorizedServices,
+  });
   
   return {
     callerId: tokenRecord.id,
